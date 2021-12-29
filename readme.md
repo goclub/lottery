@@ -62,6 +62,7 @@ proportionRanges = [
 ```
 
 然后生成一个 1 到 100 之间的随tenThousand机数,遍历 `proportionRanges`
+
 当 `randomUint >= item.begin && randomUint <= item.end` 时则返回奖项
 
 [Go版本实现](./probability.go?blob)
