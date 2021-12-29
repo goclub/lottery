@@ -16,15 +16,15 @@
   proportions: [
       {
           proportion: 10,
-          amount: 1, // 1元,单位分
+          award: 1, // 1元,单位分
       },
       {
           proportion: 20,
-          amount: 2, // 2元,单位分
+          award: 2, // 2元,单位分
       },
       {
           proportion: 70,
-          amount: 7, // 7元,单位分
+          award: 7, // 7元,单位分
       },
   ]
 }
