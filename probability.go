@@ -5,6 +5,9 @@ import xerr "github.com/goclub/error"
 
 func (rule Probability) Lottery() (award interface{}, err error) {
 	// 验证
+	if rule.Range == 0 {
+		return nil, xerr.New("goclub/lottery: Probability{}.Lottery() Probability{} Range can not be zero")
+	}
 	var proportionTotal uint64 = 0
 	for _, proportion := range rule.Proportions {
 		proportionTotal += proportion.Proportion
