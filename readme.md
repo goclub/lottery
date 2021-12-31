@@ -92,93 +92,72 @@ proportionRanges = [
 
 用文字描述需求: 每当遇到10的倍数时中奖
 
-用数据描述需求:
-
-```js
-{
-    threshold: 10,
-    count: 0,
-    awardInventory: 0
-}
-```
-### 伪代码 
+### 伪代码
 
 用伪代码表达逻辑
 
 ```js
 var data = {
-    threshold: 10,
-    count: 0,
-    awardInventory: 0
+    threshold: 10, // 每10次抽奖
+    inventory: 0 // 礼品库存
+    count: 0, //计数,每当抽奖行为产生时递增
 }
 function lottery() {
     data.count++
     if (data.count >= data.threshold) {
-        data.awardInventory++
+        data.inventory++
         data.count = 0 
     }
-    if (data.awardInventory>0) {
-        data.awardInventory--
+    if (data.inventory>0) {
+        data.inventory--
         return true
     }
     return false
 }
 ```
 
-> 你可能会觉得只需要 `count` 而不需要 `awardInventory`.暂时先不解释原因,后面的章节会介绍到奖池的概念.
+> 你可能会觉得只需要 `count` 而不需要 `inventory`.暂时先不解释原因,后面的章节会介绍到奖池的概念.
 
 ### 原子性
 
-计数型包含了可变的数据 `count` `awardInventory`, 它们肯定是存储在数据库中,并且操作数据的时候要注意 [原子性](https://be.nimo.run/theory/atomicity)
+计数型包含了可变的数据 `count` `inventory`, 它们肯定是存储在数据库中,并且操作数据的时候要注意 [原子性](https://be.nimo.run/theory/atomicity)
 
 用 redis-eval 实现满足原子性的逻辑:
 
-```js
-var data = {
-    threshold: 10,
-}
-function lottery() {
-    return redisEval(`
-        local threshold = tonumber(ARGV[1])
-        -- 递增并获取递增后的值
-        local newCount = redis.call("INCR", "count")
-        -- 判断是否达到阈值 (注意这里要写 >= 而不是 = , 这样代码更健壮)
-        if (newCount >= threshold)
-        then
-            -- 达到阈值则递增库存
-            redis.call("INCR", "awardInventory")
-            -- 并将计数归零
-            redis.redis("SET", "count", 0)
-        end
-        -- 获取库存
-        local awardInventory = redis.call("GET", "awardInventory")
-        -- 确保库存是 number
-        if (awardInventory)
-        then
-            awardInventory = tonumber(awardInventory)
-        else
-            -- 如果库存不存在则视为0库存
-            awardInventory = 0
-        end
-        -- 判断库存
-        if (awardInventory > 0 )
-        then
-            -- 递减库存
-            redis.call("DECR", "awardInventory")
-            return "won"
-        end
-        -- 库存不足未中奖
-        return "miss"
-        
-    `, {
-        ARGV: [data.threshold]
-    })
-}
+```lua
+local threshold = tonumber(ARGV[1])
+-- 递增并获取递增后的值
+local newCount = redis.call("INCR", "count")
+-- 判断是否达到阈值 (注意这里要写 >= 而不是 = , 这样代码更健壮)
+if (newCount >= threshold)
+then
+    -- 达到阈值则递增库存
+    redis.call("INCR", "inventory")
+    -- 并将计数归零
+    redis.redis("SET", "count", 0)
+end
+-- 获取库存
+local inventory = redis.call("GET", "inventory")
+-- 确保库存是 number
+if (inventory)
+then
+    inventory = tonumber(inventory)
+else
+    -- 如果库存不存在则视为0库存
+    inventory = 0
+end
+-- 判断库存
+if (inventory > 0 )
+then
+    -- 递减库存
+    redis.call("DECR", "inventory")
+    return "won"
+end
+-- 库存不足未中奖
+return "miss"
 ```
 
-
 ## 抽牌
-
 
 - 概率: **有10%的概率中奖**
 - 计数: **每当遇到10的倍数时中奖**
@@ -188,6 +167,7 @@ function lottery() {
 
 桌面上有**红蓝黄**三张牌.你想要抽到**红牌**,于是闭上眼睛去抽牌:
 
+- 在桌面上放 **红蓝黄** 三张牌
 - **第1次**抽到了 **蓝牌**,此时桌上还有**红牌** **黄牌** 
 - 接下里你抽到**红牌**的概率是 *66%*
 - **第2次**抽到了 **黄牌**,此时桌上还有**红牌**
@@ -199,19 +179,58 @@ function lottery() {
 - **第5次**抽到了 **红牌**
 - **第6次**抽到了 **蓝牌** (你不会再次抽到红牌,因为刚才你已经抽到过了,除非你接着将牌放回桌面重新抽牌)
 
+> 我们将视桌子上放三张牌到牌抽完视为一轮 `round`
+> 第1/2/3次抽奖为一轮,第4/5/6次抽奖为一轮
 
 计数型是控制第10次中奖,而抽牌式则是让中奖更加平均.可能是1~10中的任意一次中奖.
 
-
-用文字描述需求: **每10次抽奖必定中奖,且最多只中1次**
+> 那么每 10 次抽奖为一轮 `round` 
+ 
+用文字描述需求: **每10次抽奖必定中奖,且最多中1次**
 
 伪代码:
 
+
 ```js
 var data = {
-    threshold: 10, // 每10次抽奖
-    numberOfAwardInthreshold: 1, // 最多只中1次  
-    count: 0,
-    awardInventory: 0
+    threshold: 10, // 10次抽奖为一轮
+    roundAward: 1, // 一轮最多中1次
+    roundInventoryAdditions: 0, // 计数:当前这一轮新增的礼品数
+    count: 0, //计数:每当抽奖行为产生时递增
+    inventory: 0 // 计数:礼品库存
+}
+function lottery(data) {
+    coreLottery(data)
+    if (data.count >= data.threshold) {
+        data.count = 0
+        data.roundInventoryAdditions = 0
+    }
+}
+function coreLottery(data) {
+    data.count++
+    // 每轮的中奖次数不能超过 roundAward
+    if (data.roundInventoryAdditions >= data.roundAward) {
+        return false
+    }
+    // 保底操作:
+    // 如果规则是每10次抽奖最多中 1 次,那么第10次必中
+    //  mustWinningTime = 10 - 1 + 1
+    //  mustWinningTime =      9 + 1
+    //  mustWinningTime =         10
+
+    // 如果规则是每10次抽奖最多中 2 次,那么第9和第10次必中
+    //  mustWinningTime = 10 - 2 + 1
+    //  mustWinningTime =      8 + 1
+    //  mustWinningTime =         9
+    
+    var mustWinningTime = data.threshold - roundAward
+    if (data.count >= mustWinning) {
+        data.inventory++
+        data.roundInventoryAdditions++
+        return true
+    }
+    return false
 }
 ```
+
+redis 版本 @grifree 来实现
