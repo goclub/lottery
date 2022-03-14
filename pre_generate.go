@@ -5,7 +5,7 @@ type PreGenerate struct {
 	AwardTotal uint64 // 奖品数
 }
 
-func (v PreGenerate) Gen(callback func(number uint64, award bool)) {
+func (v *PreGenerate) Gen(callback func(number uint64, award bool)) {
 	stepLength := float64(v.AwardTotal)/float64(v.Total)
 	var awardCount uint64 = 0
 	var n uint64 = 1
